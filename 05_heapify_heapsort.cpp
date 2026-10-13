@@ -139,10 +139,10 @@ long heapsort(std::vector<int>& v) {
 // Coste O(n log k) y memoria O(k). Con n = 10^9 y k = 10 esto funciona;
 // ordenar los 10^9 no.
 std::vector<int> topK(const std::vector<int>& v, int k) {
-    std::priority_queue<int, std::vector<int>, std::greater<int>> mejores;  // min-heap
+    std::priority_queue<int, std::vector<int>, std::greater<int>> mejores;  // min-heap priority queue recibe un comparador: https://es.cppreference.com/cpp/container/priority_queue
     for (int x : v) {
-        if (static_cast<int>(mejores.size()) < k) mejores.push(x);
-        else if (x > mejores.top()) { mejores.pop(); mejores.push(x); }
+        if (mejores.size() < k) mejores.push(x); //aún no hay k elementos, se mete el nuevo
+        else if (x > mejores.top()) { mejores.pop(); mejores.push(x); } //el nuevo es mejor que el peor de los k, se expulsa el peor y se mete el nuevo
     }
     std::vector<int> res;
     while (!mejores.empty()) { res.push_back(mejores.top()); mejores.pop(); }
@@ -151,35 +151,45 @@ std::vector<int> topK(const std::vector<int>& v, int k) {
 }
 
 int main() {
-    std::mt19937 gen(7);
-    std::uniform_int_distribution<int> dist(0, 1000000);
+    std::mt19937 gen(7); // mt19937 es un generador de numeros pseudoaleatorios de 32 bits, con periodo 2^19937-1
+                         // El 7 es la semilla fija para reproducibilidad
+    std::uniform_int_distribution<int> dist(0, 1000000); // distribucion uniforme de enteros entre 0 y 1.000.000
 
     std::cout << "=== (A) Construir el monticulo: O(n log n) frente a O(n) ===\n";
-    std::cout << "  " << std::left << std::setw(12) << "n"
-              << std::setw(16) << "insertando"
-              << std::setw(10) << "ops/n"
-              << std::setw(16) << "Floyd"
-              << "ops/n\n";
-    for (int n : {10000, 20000, 40000, 80000, 160000}) {
-        std::vector<int> base(n);
-        for (int& x : base) x = dist(gen);
+    // Dos tandas: datos al azar (el caso medio) y datos en orden creciente
+    // (el PEOR caso de insertar: cada elemento nuevo es el mayor hasta el
+    // momento y sube hasta la raiz). Floyd no distingue entre las dos.
+    for (bool creciente : {false, true}) {
+        std::cout << (creciente ? "\n  Datos en ORDEN CRECIENTE (peor caso de insertar):\n"
+                                : "  Datos ALEATORIOS (caso medio):\n");
+        std::cout << "  " << std::left << std::setw(12) << "n"
+                  << std::setw(16) << "insertando"
+                  << std::setw(10) << "ops/n"
+                  << std::setw(16) << "Floyd"
+                  << "ops/n\n";
+        for (int n : {10000, 40000, 160000, 640000, 2560000}) {
+            std::vector<int> base(n); 
+            for (int i = 0; i < n; i++) base[i] = creciente ? i : dist(gen);
 
-        std::vector<int> a = base, b = base;
-        long opsA = construirInsertando(a);
-        long opsB = construirFloyd(b);
+            std::vector<int> a = base, b = base;
+            long opsA = construirInsertando(a);
+            long opsB = construirFloyd(b);
 
-        std::cout << "  " << std::left << std::setw(12) << n
-                  << std::setw(16) << opsA
-                  << std::setw(10) << std::fixed << std::setprecision(2) << double(opsA) / n
-                  << std::setw(16) << opsB
-                  << double(opsB) / n
-                  << (esMonticulo(a) && esMonticulo(b) ? "" : "  [ERROR]") << '\n';
+            std::cout << "  " << std::left << std::setw(12) << n
+                      << std::setw(16) << opsA
+                      << std::setw(10) << std::fixed << std::setprecision(2) << double(opsA) / n
+                      << std::setw(16) << opsB
+                      << double(opsB) / n
+                      << (esMonticulo(a) && esMonticulo(b) ? "" : "  [ERROR]") << '\n';
+        }
     }
-    std::cout << "\n  La columna ops/n de Floyd es CONSTANTE (~2): coste lineal.\n"
-              << "  La de insertando CRECE con n: ahi esta el factor log n.\n"
-              << "  Las dos construyen un monticulo igual de valido. Con estos n la\n"
-              << "  diferencia es solo de un 35%, pero no es una constante: sigue\n"
-              << "  subiendo con n, porque son ordenes distintos. Prueba con 10^7.\n";
+    std::cout << "\n  La columna ops/n de Floyd es CONSTANTE en las dos tandas (~2.6 y 3):\n"
+              << "  coste lineal, sean cuales sean los datos.\n"
+              << "  La de insertando depende de los datos. Al azar tambien parece\n"
+              << "  constante (~3.5): un elemento cualquiera casi nunca sube hasta\n"
+              << "  arriba. En orden creciente cada uno sube hasta la raiz, y ops/n\n"
+              << "  CRECE: unas 4 mas cada vez que n se multiplica por 4 (2 niveles\n"
+              << "  mas, 2 operaciones por nivel). Ahi esta el factor log n del peor caso.\n";
 
     std::cout << "\n=== (B) Heapsort ===\n";
     std::vector<int> peq(12);
@@ -215,7 +225,8 @@ int main() {
 
     std::cout << "\n=== (C) Top-K: no ordenes lo que no necesitas ===\n";
     {
-        const int n = 5000000, k = 10;
+        const int n = 5000000;
+        const u_int k = 10;
         std::vector<int> grande(n);
         for (int& x : grande) x = dist(gen);
 

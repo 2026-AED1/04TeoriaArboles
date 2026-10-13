@@ -577,43 +577,242 @@ prioridad de un elemento concreto sin saber dónde está.
 
 ### Construcción en O(n), heapsort y top-k
 
-`05_heapify_heapsort.cpp` saca tres resultados del montículo:
+El fichero `05_heapify_heapsort.cpp` aprovecha el montículo para tres cosas
+distintas: construirlo de golpe a partir de un array, ordenar con él
+(heapsort) y quedarse con los k mayores de una colección enorme (top-k). Las
+tres usan solo las dos operaciones del apartado anterior: `subir` (*sift-up*)
+y `bajar` (*sift-down*).
 
-- **Construir cuesta O(n), no O(n log n).** Insertar uno a uno cuesta
-  n × O(log n). El método de Floyd (1964) —meter todo el array de golpe y
-  bajar desde el último padre hacia la raíz— cuesta O(n), porque el coste de
-  `bajar` es la **altura de cada nodo**, y la inmensa mayoría de los nodos
-  de un árbol completo están abajo, donde la altura es diminuta.
-- **Heapsort:** construir en O(n) y repetir "intercambiar la raíz con el
-  último y reajustar" n−1 veces. O(n log n) siempre, sin memoria extra, pero
-  pierde contra `std::sort` por localidad de caché.
-- **Top-k con un montículo de mínimos de tamaño k:** para quedarse con los k
-  **mayores** se usa, contraintuitivamente, un montículo de **mínimos**: la
-  raíz es "el peor de los que he guardado", el candidato a expulsar.
+#### (A) Construir un montículo a partir de un array
+
+Tenemos un array desordenado con n elementos y queremos convertirlo en
+montículo. Hay dos formas de hacerlo.
+
+**Forma 1: insertar uno a uno.** Se empieza con un montículo vacío y se
+inserta cada elemento: se coloca al final y se hace `subir`. Cada inserción
+cuesta como mucho la altura, log n, así que el total es **O(n log n)**.
+
+**Forma 2: el método de Floyd (1964).** Se basa en dos observaciones:
+
+1. **La forma ya está bien.** Un array de n elementos, leído con
+   `izquierdo(i) = 2i+1` y `derecho(i) = 2i+2`, ya es un árbol completo. Lo
+   único que falla es el **orden** entre padres e hijos.
+2. **Las hojas ya son montículos.** Una hoja no tiene hijos, así que no
+   incumple nada. En un árbol completo, las hojas son toda la segunda mitad
+   del array (índices `n/2` a `n−1`), así que la mitad del trabajo ya está
+   hecha sin mover nada.
+
+Así que se recorren solo los nodos que tienen hijos, **desde el último padre
+(`n/2 − 1`) hacia la raíz (0)**, y en cada uno se llama a `bajar`:
+
+```cpp
+for (int i = n / 2 - 1; i >= 0; i--) bajar(v, i, n);
+```
+
+**Un ejemplo a mano** con `[10 20 30 40 50 60 70]` (n = 7, padres en los
+índices 2, 1 y 0):
+
+```text
+  inicial:          bajar(2): 30 baja      bajar(1): 20 baja      bajar(0): 10 baja dos veces
+
+     10                 10                     10                     70
+   /    \             /    \                 /    \                 /    \
+  20     30          20     70              50     70              50     60
+ / \    / \         / \    / \             / \    / \             / \    / \
+40 50  60 70       40 50  60 30           40 20  60 30           40 20  10 30
+
+  array: 10 20 30 40 50 60 70  ->  10 20 70 40 50 60 30  ->  10 50 70 40 20 60 30  ->  70 50 60 40 20 10 30
+```
+
+**Pregunta para pensar:** ¿por qué hay que recorrer de abajo arriba (de
+`n/2 − 1` hacia 0) y no de la raíz hacia abajo?
 
 <details>
-<summary>Mostrar resultado</summary>
+<summary>Mostrar respuesta</summary>
+
+`bajar(i)` solo funciona si los dos subárboles de `i` **ya son montículos**:
+compara el nodo con sus dos hijos, se intercambia con el mayor y sigue
+bajando, dando por hecho que por debajo todo está en orden. Recorriendo de
+abajo arriba, cuando se llega a `i` sus dos hijos ya se han procesado (tienen
+índices mayores) y la condición se cumple. Si se empezara por la raíz, sus
+subárboles aún estarían desordenados y el resultado no sería un montículo.
+
+</details>
+
+**¿Por qué Floyd cuesta O(n) y no O(n log n)?** El coste de `bajar` desde un
+nodo no es log n, sino **la altura de ese nodo**, es decir, cuántos niveles
+tiene por debajo. En un árbol completo, casi todos los nodos están abajo:
+
+| Nodos de esa altura | Altura (máximo de pasos al bajar) | Trabajo en ese nivel |
+| ------------------- | --------------------------------- | -------------------- |
+| n/2 (las hojas)     | 0                                 | 0                    |
+| n/4                 | 1                                 | n/4                  |
+| n/8                 | 2                                 | 2·n/8 = n/4          |
+| n/16                | 3                                 | 3·n/16               |
+| ...                 | ...                               | ...                  |
+| 1 (la raíz)         | log n                             | log n                |
+
+La suma es n · (1/4 + 2/8 + 3/16 + 4/32 + …). Esa serie converge a 1, sea
+cual sea n, así que el total es **como mucho del orden de n**.
+
+Con la inserción uno a uno pasa justo lo contrario. Lo que cuesta es `subir`,
+y la distancia que recorre un nodo al subir es su **profundidad**. La mitad
+de los nodos son hojas, con profundidad ≈ log n: los nodos que más pueden
+subir son precisamente los más numerosos. Floyd deja el trabajo caro para los
+pocos nodos de arriba, y la inserción se lo asigna a los muchos de abajo.
+
+**Una advertencia al leer las medidas.** O(n log n) es el **peor caso** de
+insertar uno a uno, y no siempre se ve. Por eso el programa mide dos tandas:
+
+- **Datos aleatorios:** un elemento recién insertado casi nunca sube hasta
+  arriba, así que la columna `ops/n` de "insertando" apenas cambia (≈ 3,5)
+  y parece lineal.
+- **Datos en orden creciente:** cada elemento nuevo es el mayor hasta el
+  momento y sube hasta la raíz. Ahí `ops/n` de "insertando" **crece**: suma
+  unas 4 operaciones cada vez que n se multiplica por 4 (log₂ 4 = 2 niveles
+  más, con 2 operaciones por nivel). Ese es el factor log n.
+
+En las dos tandas, Floyd se queda clavado (≈ 2,6 con datos al azar, 3 con
+datos en orden): su coste es lineal sean cuales sean los datos.
+
+#### (B) Heapsort: ordenar con el montículo
+
+Una vez construido el montículo de máximos, el mayor está en `v[0]`. La idea
+es ir sacando el máximo una y otra vez y colocarlo **al final del propio
+array**, en el hueco que deja el montículo al encoger. El array queda partido
+en dos zonas:
+
+```text
+  [ montículo (aún por ordenar) | ya ordenado, en su sitio definitivo ]
+```
+
+En cada paso: (1) se intercambia `v[0]` (el máximo) con el último elemento
+del montículo, (2) el montículo encoge en uno, de modo que ese máximo pasa a
+la zona ordenada, y (3) se hace `bajar(0)` para arreglar la raíz, que ahora
+tiene un valor cualquiera. Siguiendo con el montículo del ejemplo:
+
+```text
+  70 50 60 40 20 10 30 |              intercambiar 70 <-> 30, bajar(0)
+  60 50 30 40 20 10 | 70              intercambiar 60 <-> 10, bajar(0)
+  50 40 30 10 20 | 60 70              ...
+  ...
+  | 10 20 30 40 50 60 70              ordenado
+```
+
+Por eso se usa un montículo de **máximos** para ordenar de menor a mayor: el
+máximo es el que tiene que ir al final.
+
+**Coste:** la construcción es O(n) y luego hay n − 1 pasos de O(log n) cada
+uno, así que el total es **O(n log n), siempre**. No tiene un peor caso malo
+como quicksort, y no usa memoria extra: todo ocurre dentro del mismo array.
+
+**¿Por qué entonces `std::sort` no es un heapsort?** Por la caché. `bajar`
+salta de `i` a `2i+1`, luego a `4i+3`, y así sucesivamente: cada salto aterriza
+en una zona lejana del array, y el procesador tiene que traerla de memoria.
+Quicksort, en cambio, recorre el array de forma secuencial. Con el mismo
+O(n log n), heapsort tarda entre 1,5 y 2 veces más. Aun así, el heapsort no se tira:
+`std::sort` es un *introsort*, un quicksort que **cambia a heapsort** si
+detecta que va camino de su peor caso O(n²), precisamente porque heapsort lo
+garantiza.
+
+#### (C) Top-k: los k mayores sin ordenarlo todo
+
+**El problema:** de n elementos (pongamos 5 millones de ventas) se quieren
+solo los k mayores (pongamos los 10 productos más vendidos). Ordenarlo todo
+cuesta O(n log n) y exige tener los n elementos en memoria, solo para
+quedarse con 10.
+
+**La idea:** recorrer los datos una sola vez, guardando los **k mejores
+vistos hasta ahora**. Cada vez que llega un elemento nuevo, la pregunta es:
+¿es mejor que el **peor** de los que tengo guardados? Si lo es, el peor sale
+y el nuevo entra. Para responder rápido hay que tener ese "peor de los
+mejores" siempre a mano, y eso es exactamente la raíz de un **montículo de
+mínimos**. De ahí la paradoja aparente: para quedarse con los **mayores** se
+usa un montículo de **mínimos**. La raíz funciona como el listón para entrar.
+
+```cpp
+for (int x : v) {
+    if (mejores.size() < k)        mejores.push(x);            // aún hay sitio
+    else if (x > mejores.top()) {  mejores.pop(); mejores.push(x); }  // supera el listón
+}
+```
+
+**Un ejemplo** con k = 3 y los datos `5 1 8 3 9 2 7`:
+
+```text
+  llega   montículo (raíz = listón)   qué pasa
+  5       {5}                         hay sitio
+  1       {1, 5}                      hay sitio
+  8       {1, 5, 8}     listón 1      hay sitio; ya está lleno
+  3       {3, 5, 8}     listón 3      3 > 1: sale el 1, entra el 3
+  9       {5, 8, 9}     listón 5      9 > 3: sale el 3, entra el 9
+  2       {5, 8, 9}     listón 5      2 < 5: se descarta sin tocar nada
+  7       {7, 8, 9}     listón 7      7 > 5: sale el 5, entra el 7
+                                      -> los 3 mayores: 9 8 7
+```
+
+Con un montículo de máximos, la raíz sería el **mejor** guardado, que es
+justo el que no hay que expulsar, y encontrar el peor costaría O(k).
+
+**Coste:** cada elemento cuesta como mucho O(log k), porque el montículo
+nunca pasa de k elementos, así que el total es **O(n log k)**, y la memoria
+es **O(k)**. Con k = 10, log k es poco más de 3. Además, cada dato se mira
+una sola vez y se descarta, así que funciona aunque los datos lleguen como un
+flujo y no quepan en memoria (un registro de eventos, una consulta a una
+base de datos…).
+
+<details>
+<summary>Mostrar resultado (<code>05_heapify_heapsort.cpp</code>)</summary>
 
 ```text
 === (A) Construir el monticulo: O(n log n) frente a O(n) ===
+  Datos ALEATORIOS (caso medio):
   n           insertando      ops/n     Floyd           ops/n
   10000       35286           3.53      26213           2.62
-  160000      571333          3.57      420896          2.63
+  40000       143436          3.59      105363          2.63
+  160000      569971          3.56      419844          2.62
+  640000      2275377         3.56      1679244         2.62
+  2560000     9120127         3.56      6720599         2.63
+
+  Datos en ORDEN CRECIENTE (peor caso de insertar):
+  n           insertando      ops/n     Floyd           ops/n
+  10000       227262          22.73     29974           3.00
+  40000       1068962         26.72     119968          3.00
+  160000      4915750         30.72     479962          3.00
+  640000      22222890        34.72     1919956         3.00
+  2560000     99131438        38.72     7679950         3.00
 
 === (B) Heapsort ===
-    n=800000   heapsort 71.6    ms   std::sort 42.2    ms   (x1.7)
+  antes:   95  84  92  1   21  67  38  6   97  26  70  54
+  despues: 1   6   21  26  38  54  67  70  84  92  95  97
+  ordenado: true, sin memoria extra
+
+  Comparacion con std::sort (introsort), mismo O(n log n):
+    n=200000   heapsort 13.2    ms   std::sort 8.8     ms   (x1.5)  [mismo resultado]
+    n=400000   heapsort 28.4    ms   std::sort 18.7    ms   (x1.5)  [mismo resultado]
+    n=800000   heapsort 63.7    ms   std::sort 39.1    ms   (x1.6)  [mismo resultado]
 
 === (C) Top-K: no ordenes lo que no necesitas ===
   n = 5000000, k = 10
-    monticulo de k:  2.9 ms   (memoria extra: 10 enteros)
-    ordenar todo:    293.9 ms   (memoria extra: 5000000 enteros)
+    monticulo de k:  2.7 ms   (memoria extra: 10 enteros)
+    ordenar todo:    274.8 ms   (memoria extra: 5000000 enteros)
+    coinciden con ordenar: true
 ```
 
 </details>
 
-La columna `ops/n` de Floyd se queda clavada en ~2,6 aunque n se multiplique
-por 16: es la prueba de que "n operaciones de O(log n) cada una" es una cota
-cierta pero no siempre ajustada.
+Para quedarse con tres ideas:
+
+- **(A)** "n operaciones de O(log n) cada una" da una cota **cierta**, pero
+  no siempre **ajustada**. Si la mayoría de esas operaciones cuestan mucho
+  menos que el peor caso, el total puede ser menor. La columna `ops/n` de
+  Floyd se queda clavada aunque n se multiplique por 256, y da igual que
+  los datos lleguen al azar o en orden.
+- **(B)** Dos algoritmos con el mismo orden de complejidad pueden tener
+  constantes muy distintas. La caché cuenta.
+- **(C)** No hay que ordenar lo que no se necesita: O(n log k) con memoria
+  O(k) frente a O(n log n) con memoria O(n). En el ejemplo, unas 100 veces más
+  rápido.
 
 ---
 

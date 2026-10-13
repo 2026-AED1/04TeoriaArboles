@@ -97,6 +97,7 @@ public:
     //                                      subarbol nunca tiene hijo
     //                                      izquierdo), asi que no hace falta
     //                                      un cuarto caso.
+    // También se puede usar el PREDECESOR inorden (el MAXIMO del subarbol izquierdo) y el resultado es simetrico.
     //
     // Sigue el MISMO patron que insertarEn(): una funcion recursiva que
     // recibe una raiz de subarbol y DEVUELVE la nueva raiz de ese subarbol
